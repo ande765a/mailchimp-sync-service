@@ -1,0 +1,13 @@
+version: "3"
+services:
+  mongo:
+    image: mongo:4
+
+  mailchimp-sync-service:
+    build: .
+    volumes:
+      - ./src/:/usr/src/app/src
+    depends_on:
+      - mongo
+    environment:
+      - RUN_MODE=job

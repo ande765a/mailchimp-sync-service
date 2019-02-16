@@ -9,7 +9,8 @@
   "private": true,
   "scripts": {
     "start": "node src/index.js",
-    "build": "docker build -t mailchimp-sync-service:latest ."
+    "build": "docker build -t mailchimp-sync-service:latest .",
+    "start-docker": "docker-compose -f docker-compose.yml -f docker-compose.dev.yml run mailchimp-sync-service"
   },
   "dependencies": {
     "date-fns": "^1.30.1",
