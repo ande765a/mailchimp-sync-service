@@ -11,13 +11,12 @@ switch (process.env.RUN_MODE) {
   case "job": {
     getSegmentedUsers()
       .then(users => {
-        const automationListID = process.env.AUTOMATION_LIST_ID || "304e17e818";
-
         const batchOperations = users.map(user => {
           const emailHash = md5.update(user.email.toLowerCase()).digest("hex");
           return {
             method: "PUT",
-            path: `lists/${automationListID}/members/${emailHash}`,
+            // prettier-ignore
+            path: `lists/${process.env.AUTOMATION_LIST_ID}/members/${emailHash}`,
             body: JSON.stringify({
               email_address: user.email,
               status_if_new: "subscribed",
