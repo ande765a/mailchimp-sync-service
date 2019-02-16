@@ -4,6 +4,7 @@ const { Mailchimp } = require("./mailchimp");
 const { getSegmentedUsers } = require("./data");
 
 const mailchimp = new Mailchimp({
+  api_base: process.env.MAILCHIMP_BASE_URL,
   api_key: process.env.MAILCHIMP_API_KEY
 });
 
@@ -32,7 +33,7 @@ switch (process.env.RUN_MODE) {
           };
         });
 
-        return mailchimp.fetch("batch", {
+        return mailchimp.fetch("batches", {
           // @ts-ignore
           method: "POST",
           headers: {
@@ -45,6 +46,7 @@ switch (process.env.RUN_MODE) {
       })
       .then(result => {
         console.log(JSON.stringify(result, null, 2));
+        //process.exit(0);
       })
       .catch(error => {
         console.error(error);
