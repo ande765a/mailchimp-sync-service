@@ -2,5 +2,11 @@
   "name": "mailchip-sync-service-integration-test",
   "version": "1.0.0",
   "main": "src/index",
-  "license": "MIT"
+  "license": "MIT",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "dependencies": {
+    "node-fetch": "^2.3.0"
+  }
 }
