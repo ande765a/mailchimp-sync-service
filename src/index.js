@@ -1,5 +1,5 @@
 const http = require("http");
-const md5 = require("crypto").createHash("md5");
+const crypto = require("crypto");
 const { Mailchimp } = require("./mailchimp");
 const { getSegmentedUsers } = require("./data");
 
@@ -13,7 +13,11 @@ switch (process.env.RUN_MODE) {
     getSegmentedUsers()
       .then(users => {
         const batchOperations = users.map(user => {
-          const emailHash = md5.update(user.email.toLowerCase()).digest("hex");
+          const emailHash = crypto
+            .createHash("md5")
+            .update(user.email.toLowerCase())
+            .digest("hex");
+
           return {
             method: "PUT",
             // prettier-ignore
