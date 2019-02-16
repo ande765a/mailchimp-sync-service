@@ -1,0 +1,150 @@
+version: 2
+
+auth_gcloud: &auth_gcloud
+  name: Authenticate Google Cloud
+  command: |
+    echo $GCLOUD_SERVICE_KEY | base64 -d > gcloud-service-key.json
+    gcloud auth activate-service-account --key-file gcloud-service-key.json
+
+jobs:
+  build:
+    docker:
+      - image: circleci/buildpack-deps
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Service
+          command: docker build -t ${SERVICE_NAME}:latest .
+      - run:
+          name: Save Service to Workspace
+          command: |
+            mkdir -p /tmp/docker-images
+            docker save -o /tmp/docker-images/service.tar ${SERVICE_NAME}:latest
+      - persist_to_workspace:
+          root: /tmp/docker-images
+          paths:
+            - service.tar
+
+  build-integration-test:
+    docker:
+      - image: circleci/buildpack-deps
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Build Integration Test
+          command: |
+            docker build -t ${SERVICE_NAME}:latest-integration-test ./integration-test
+      - run:
+          name: Save Integration Test to Workspace
+          command: |
+            mkdir -p /tmp/docker-images
+            docker save -o /tmp/docker-images/service_integration-test.tar ${SERVICE_NAME}:latest-integration-test
+      - persist_to_workspace:
+          root: /tmp/docker-images
+          paths:
+            - service_integration-test.tar
+
+  test:
+    docker:
+      - image: google/cloud-sdk:220.0.0-alpine
+    steps:
+      - checkout
+      - setup_remote_docker
+      - attach_workspace:
+          at: /tmp/docker-images
+      - run: *auth_gcloud
+      - run:
+          name: Install Docker
+          command: apk add docker
+      - run:
+          name: Install Pip
+          command: apk add py-pip
+      - run:
+          name: Install Docker Compose
+          command: pip install docker-compose
+      - run:
+          name: Register Google Cloud Docker Credential Helper
+          command: gcloud auth configure-docker
+      - run:
+          name: Load Service and Integration Test from Workspace
+          command: |
+            docker load < /tmp/docker-images/service.tar
+            docker load < /tmp/docker-images/service_integration-test.tar
+      - run:
+          name: Run Integration Test
+          command: docker-compose -f integration-test/docker-compose.yml run integration-test
+
+  push:
+    docker:
+      - image: google/cloud-sdk:220.0.0-alpine
+    steps:
+      - setup_remote_docker
+      - attach_workspace:
+          at: /tmp/docker-images
+      - run: *auth_gcloud
+      - run:
+          name: Install Docker
+          command: apk add docker
+      - run:
+          name: Register Google Cloud Docker Credential Helper
+          command: gcloud auth configure-docker
+      - run:
+          name: Load Docker Images from Workspace
+          command: |
+            docker load < /tmp/docker-images/service.tar
+      - run:
+          name: Push to GCR
+          command: |
+            docker tag ${SERVICE_NAME}:latest gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:$CIRCLE_SHA1
+            docker tag ${SERVICE_NAME}:latest gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:latest
+            docker push gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:$CIRCLE_SHA1
+            docker push gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:latest
+  # deploy:
+  #   docker:
+  #     - image: google/cloud-sdk:220.0.0-alpine
+  #   steps:
+  #     - run:
+  #         name: Install dependencies
+  #         command: |
+  #           gcloud components install kubectl
+  #     - run: *auth_gcloud
+  #     - run:
+  #         name: Setup Google Cloud Project
+  #         command: |
+  #           gcloud --quiet config set project $GOOGLE_PROJECT_ID
+  #           gcloud --quiet config set compute/zone $GOOGLE_COMPUTE_ZONE
+  #           gcloud --quiet container clusters get-credentials $GOOGLE_CLUSTER_NAME
+  #     - run:
+  #         name: Deploy Service Image
+  #         command: |
+  #           kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:$CIRCLE_SHA1
+
+workflows:
+  version: 2
+  build_test_deploy:
+    jobs:
+      - build
+      - build-integration-test
+      - test:
+          requires:
+            - build
+            - build-integration-test
+      - push:
+          requires:
+            - build
+            - test
+          filters:
+            branches:
+              only:
+                - master
+      # - deploy:
+      #     requires:
+      #       - build
+      #       - test
+      #       - push
+      #     filters:
+      #       branches:
+      #         only:
+      #           - master
