@@ -1,0 +1,16 @@
+version: "3"
+services:
+  mongo:
+    image: mongo:4
+
+  mailchimp-sync-service:
+    image: mailchimp-sync-service:latest
+    depends_on:
+      - mongo
+    environment:
+      - MONGODB_HOST=mongo
+
+  integration-test:
+    image: mailchimp-sync-service:latest-integration-test
+    depends_on:
+      - mailchimp-sync-service

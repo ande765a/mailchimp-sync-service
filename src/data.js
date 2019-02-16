@@ -4,8 +4,8 @@ const { subDays } = require("date-fns");
 function getSegmentedUsers({ lookback_days = 14 } = {}) {
   return new Promise((resolve, reject) => {
     MongoClient.connect(
-      `mongodb://${process.env.MONGODB_HOST}:${process.env.MONGODB_PORT ||
-        27017}`,
+      // prettier-ignore
+      `mongodb://${process.env.MONGODB_HOST || "mongo"}:${process.env.MONGODB_PORT || 27017}`,
       {
         useNewUrlParser: true
       }
