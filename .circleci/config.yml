@@ -119,7 +119,7 @@ jobs:
       - run:
           name: Deploy Service Image
           command: |
-            kubectl set image deployment/${SERVICE_NAME} ${SERVICE_NAME}=gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:$CIRCLE_SHA1
+            kubectl set image cronjob/${SERVICE_NAME} ${SERVICE_NAME}=gcr.io/${GOOGLE_PROJECT_ID}/${SERVICE_NAME}:$CIRCLE_SHA1
 
 workflows:
   version: 2
