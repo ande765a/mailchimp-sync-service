@@ -18,6 +18,8 @@ switch (process.env.RUN_MODE) {
             .update(user.email.toLowerCase())
             .digest("hex");
 
+          const [firstname, ...lastnames] = user.name.split(" ");
+
           return {
             method: "PUT",
             // prettier-ignore
@@ -32,6 +34,10 @@ switch (process.env.RUN_MODE) {
                 [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
                 [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
                 [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active
+              },
+              merge_fields: {
+                FNAME: firstname,
+                LNAME: lastnames.join(" ")
               }
             })
           };
