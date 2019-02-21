@@ -33,7 +33,9 @@ switch (process.env.RUN_MODE) {
                 [process.env.HOME_SUBSCRIPTION_STATUS_TRIAL]: false,
                 [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
                 [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
-                [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active
+                [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active,
+                [process.env.HOME_USAGE_NO_USAGE]: user.streamed <= 0,
+                [process.env.HOME_USAGE_LOW_USAGE]: user.streamed > 0
               },
               merge_fields: {
                 FNAME: firstname,
