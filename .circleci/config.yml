@@ -48,25 +48,12 @@ jobs:
 
   test:
     docker:
-      - image: google/cloud-sdk:220.0.0-alpine
+      - image: circleci/buildpack-deps
     steps:
       - checkout
       - setup_remote_docker
       - attach_workspace:
           at: /tmp/docker-images
-      - run: *auth_gcloud
-      - run:
-          name: Install Docker
-          command: apk add docker
-      - run:
-          name: Install Pip
-          command: apk add py-pip
-      - run:
-          name: Install Docker Compose
-          command: pip install docker-compose
-      - run:
-          name: Register Google Cloud Docker Credential Helper
-          command: gcloud auth configure-docker
       - run:
           name: Load Service and Integration Test from Workspace
           command: |
