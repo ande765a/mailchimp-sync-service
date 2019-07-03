@@ -11,8 +11,8 @@
     "start": "node src/index.js",
     "build": "docker build -t mailchimp-sync-service:latest .",
     "build-integration-test": "docker build -t mailchimp-sync-service:latest-integration-test ./integration-test",
-    "start-docker": "docker-compose -f docker-compose.yml -f docker-compose.dev.yml run mailchimp-sync-service",
-    "test-integration": "docker-compose -f ./integration-test/docker-compose.yml -f ./integration-test/docker-compose.dev.yml run integration-test"
+    "start-docker": "docker-compose -f docker-compose.yml run mailchimp-sync-service",
+    "test-integration": "docker-compose -f ./integration-test/docker-compose.yml run integration-test"
   },
   "dependencies": {
     "date-fns": "^1.30.1",
