@@ -16,7 +16,9 @@ function getSegmentedUsers({ lookback_days = 14 } = {}) {
         db.collection("users")
           .aggregate([
             {
-              $match: {}
+              $match: {
+                "logins.type": "email"
+              }
             },
             {
               $lookup: {
@@ -109,7 +111,7 @@ function getSegmentedUsers({ lookback_days = 14 } = {}) {
             {
               $project: {
                 name: "$name",
-                email: "$email",
+                logins: "$logins",
                 cancelled: {
                   $anyElementTrue: "$subscriptions.cancelled"
                 },

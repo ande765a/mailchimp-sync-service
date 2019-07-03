@@ -8,42 +8,46 @@ const mailchimp = new Mailchimp({
   api_key: process.env.MAILCHIMP_API_KEY
 });
 
+function createBatchOperationFromUser(user) {
+  const { email } = user.logins.find(login => login.type == "email");
+
+  const emailHash = crypto
+    .createHash("md5")
+    .update(email.toLowerCase())
+    .digest("hex");
+
+  const [firstname, ...lastnames] = user.name.split(" ");
+
+  return {
+    method: "PUT",
+    // prettier-ignore
+    path: `lists/${process.env.AUTOMATION_LIST_ID}/members/${emailHash}`,
+    body: JSON.stringify({
+      email_address: email,
+      status_if_new: "subscribed",
+      // prettier-ignore
+      interests: {
+        [process.env.HOME_SUBSCRIPTION_STATUS_NOT_SUBSCRIBED]: !user.subscribed,
+        [process.env.HOME_SUBSCRIPTION_STATUS_TRIAL]: false,
+        [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
+        [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
+        [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active,
+        [process.env.HOME_USAGE_NO_USAGE]: user.streamed <= 0,
+        [process.env.HOME_USAGE_LOW_USAGE]: user.streamed > 0
+      },
+      merge_fields: {
+        FNAME: firstname,
+        LNAME: lastnames.join(" ")
+      }
+    })
+  };
+}
+
 switch (process.env.RUN_MODE) {
   case "job": {
     getSegmentedUsers()
       .then(users => {
-        const batchOperations = users.map(user => {
-          const emailHash = crypto
-            .createHash("md5")
-            .update(user.email.toLowerCase())
-            .digest("hex");
-
-          const [firstname, ...lastnames] = user.name.split(" ");
-
-          return {
-            method: "PUT",
-            // prettier-ignore
-            path: `lists/${process.env.AUTOMATION_LIST_ID}/members/${emailHash}`,
-            body: JSON.stringify({
-              email_address: user.email,
-              status_if_new: "subscribed",
-              // prettier-ignore
-              interests: {
-                [process.env.HOME_SUBSCRIPTION_STATUS_NOT_SUBSCRIBED]: !user.subscribed,
-                [process.env.HOME_SUBSCRIPTION_STATUS_TRIAL]: false,
-                [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
-                [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
-                [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active,
-                [process.env.HOME_USAGE_NO_USAGE]: user.streamed <= 0,
-                [process.env.HOME_USAGE_LOW_USAGE]: user.streamed > 0
-              },
-              merge_fields: {
-                FNAME: firstname,
-                LNAME: lastnames.join(" ")
-              }
-            })
-          };
-        });
+        const batchOperations = users.map(createBatchOperationFromUser);
 
         return mailchimp.fetch("batches", {
           // @ts-ignore
@@ -69,8 +73,9 @@ switch (process.env.RUN_MODE) {
   default: {
     const server = http.createServer((req, res) => {
       getSegmentedUsers()
-        .then(users => {
-          res.write(JSON.stringify(users, null, 2));
+        .then(users => users.map(createBatchOperationFromUser))
+        .then(batchOperations => {
+          res.write(JSON.stringify(batchOperations, null, 2));
           res.end();
         })
         .catch(error => {
