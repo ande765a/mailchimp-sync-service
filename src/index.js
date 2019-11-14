@@ -1,73 +1,78 @@
 const http = require("http");
-const crypto = require("crypto");
-const { Mailchimp } = require("./mailchimp");
+const { Autopilot } = require("./autopilot");
 const { getSegmentedUsers } = require("./data");
 
-const mailchimp = new Mailchimp({
-  api_base: process.env.MAILCHIMP_BASE_URL,
-  api_key: process.env.MAILCHIMP_API_KEY
+// Async sleep function
+function sleep(ms) {
+  return new Promise((resolve, _reject) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+const autopilot = new Autopilot({
+  apiKey: "API_KEY"
 });
 
-function createBatchOperationFromUser(user) {
+function createUserPostData(user) {
   const { email } = user.logins.find(login => login.type == "email");
-
-  const emailHash = crypto
-    .createHash("md5")
-    .update(email.toLowerCase())
-    .digest("hex");
 
   const [firstname, ...lastnames] = user.name.split(" ");
 
   return {
-    method: "PUT",
-    // prettier-ignore
-    path: `lists/${process.env.AUTOMATION_LIST_ID}/members/${emailHash}`,
-    body: JSON.stringify({
-      email_address: email,
-      status_if_new: "subscribed",
-      // prettier-ignore
-      interests: {
-        [process.env.HOME_SUBSCRIPTION_STATUS_NOT_SUBSCRIBED]: !user.subscribed,
-        [process.env.HOME_SUBSCRIPTION_STATUS_TRIAL]: false,
-        [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
-        [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
-        [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active,
-        [process.env.HOME_USAGE_NO_USAGE]: user.streamed <= 0,
-        [process.env.HOME_USAGE_LOW_USAGE]: user.streamed > 0
-      },
-      merge_fields: {
-        FNAME: firstname,
-        LNAME: lastnames.join(" ")
-      }
-    })
+    FirstName: firstname,
+    LastName: lastnames.join(" "),
+    Email: email,
+    custom: {
+      // We default to DA-dk as that is what api-service does
+      "string--Country--code": user.country || "DA",
+      "string--Language--code": user.language || "dk",
+      "boolean--Ever--subscribed": user.subscribed,
+      "boolean--Active--subscribtion": user.active
+      // "boolean--Ever--used--trial": false,
+      // "boolean--Using--trial": false
+    }
   };
 }
 
 switch (process.env.RUN_MODE) {
   case "job": {
-    getSegmentedUsers()
-      .then(users => {
-        const batchOperations = users.map(createBatchOperationFromUser);
+    (async function() {
+      const users = await getSegmentedUsers();
 
-        return mailchimp.fetch("batches", {
-          // @ts-ignore
+      // Split users into 100 long batches as Autopilot only allows up to 100.
+      let batchSize = 10;
+      for (var i = 0; i < users.length; i += batchSize) {
+        // If we insert a max value that is out of bounds javascript simply returns
+        // the rest of the array, which is the behavior we want
+        const batch = users.slice(i, i + batchSize);
+
+        const userPostData = batch.map(createUserPostData);
+        console.log(userPostData);
+
+        console.log(
+          JSON.stringify({
+            contacts: userPostData
+          })
+        );
+
+        const res = await autopilot.fetch("contacts", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
           body: JSON.stringify({
-            operations: batchOperations
+            contacts: userPostData
           })
         });
-      })
-      .then(result => {
-        console.log(JSON.stringify(result, null, 2));
-        //process.exit(0);
-      })
-      .catch(error => {
-        console.error(error);
-        process.exit(1);
-      });
+
+        // Print result
+        console.log(JSON.stringify(res, null, 2));
+
+        // Autopilot ratelimits us to 20 requests per second, so we make sure to
+        // wait a bit over 50 ms between every request.
+        await sleep(60); // 60 ms
+      }
+    })().catch(error => {
+      console.error(error);
+      process.exit(1);
+    });
     break;
   }
   default: {
