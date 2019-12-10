@@ -1,79 +1,91 @@
 const http = require("http");
-const crypto = require("crypto");
-const { Mailchimp } = require("./mailchimp");
+const { Autopilot } = require("./autopilot");
 const { getSegmentedUsers } = require("./data");
 
-const mailchimp = new Mailchimp({
-  api_base: process.env.MAILCHIMP_BASE_URL,
-  api_key: process.env.MAILCHIMP_API_KEY
+// Async sleep function
+function sleep(ms) {
+  return new Promise((resolve, _reject) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+const autopilot = new Autopilot({
+  apiKey: process.env.AUTOPILOT_API_KEY
 });
 
-function createBatchOperationFromUser(user) {
+function createUserPostData(user) {
   const { email } = user.logins.find(login => login.type == "email");
 
-  const emailHash = crypto
-    .createHash("md5")
-    .update(email.toLowerCase())
-    .digest("hex");
+  const subscriptions = user.subscriptions.filter(sub => !sub.trial);
 
-  const [firstname, ...lastnames] = user.name.split(" ");
+  const trial = user.subscriptions.find(sub => {
+    return sub.trial;
+  });
+
+  const subscription = subscriptions.slice(-1)[0]; // Latest subscription
+
+  const [firstname, ...lastnames] = user.name ? user.name.split(" ") : [];
 
   return {
-    method: "PUT",
-    // prettier-ignore
-    path: `lists/${process.env.AUTOMATION_LIST_ID}/members/${emailHash}`,
-    body: JSON.stringify({
-      email_address: email,
-      status_if_new: "subscribed",
-      // prettier-ignore
-      interests: {
-        [process.env.HOME_SUBSCRIPTION_STATUS_NOT_SUBSCRIBED]: !user.subscribed,
-        [process.env.HOME_SUBSCRIPTION_STATUS_TRIAL]: false,
-        [process.env.HOME_SUBSCRIPTION_STATUS_SUBSCRIBED]: user.subscribed,
-        [process.env.HOME_SUBSCRIPTION_STATUS_CANCELLED]: user.cancelled,
-        [process.env.HOME_SUBSCRIPTION_STATUS_ACTIVE]: user.active,
-        [process.env.HOME_USAGE_NO_USAGE]: user.streamed <= 0,
-        [process.env.HOME_USAGE_LOW_USAGE]: user.streamed > 0
-      },
-      merge_fields: {
-        FNAME: firstname,
-        LNAME: lastnames.join(" ")
-      }
-    })
+    FirstName: firstname,
+    LastName: lastnames.join(" "),
+    Email: email,
+    custom: {
+      "string--Language--code": user.language || "da",
+      "string--Country--code": user.country || "DK",
+      "date--User--created": user.createdAt,
+      "date--Trial--started": trial && trial.startDate,
+      "boolean--Has--chosen":
+        user.settings && user.settings.hasSeenTrialExpirationPrompt,
+      "date--Subscription--started": subscription && subscription.startDate,
+      "boolean--Subscription--cancelled":
+        subscription && subscription.cancelled,
+      "date--Subscription--expired":
+        subscription && subscription.expirationDate,
+      "integer--Subscription--period": subscription && subscription.period,
+      "integer--Subscriptions": subscriptions.length
+    }
   };
 }
 
 switch (process.env.RUN_MODE) {
   case "job": {
-    getSegmentedUsers()
-      .then(users => {
-        const batchOperations = users.map(createBatchOperationFromUser);
+    (async function() {
+      const users = await getSegmentedUsers();
 
-        return mailchimp.fetch("batches", {
-          // @ts-ignore
+      // Split users into 100 long batches as Autopilot only allows up to 100.
+      let batchSize = 10;
+      for (var i = 0; i < users.length; i += batchSize) {
+        // If we insert a max value that is out of bounds javascript simply returns
+        // the rest of the array, which is the behavior we want
+        const batch = users.slice(i, i + batchSize);
+
+        const userPostData = batch.map(createUserPostData);
+
+        const res = await autopilot.fetch("contacts", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
           body: JSON.stringify({
-            operations: batchOperations
+            contacts: userPostData
           })
         });
-      })
-      .then(result => {
-        console.log(JSON.stringify(result, null, 2));
-        //process.exit(0);
-      })
-      .catch(error => {
-        console.error(error);
-        process.exit(1);
-      });
+
+        // Print result
+        console.log(JSON.stringify(res, null, 2));
+
+        // Autopilot ratelimits us to 20 requests per second, so we make sure to
+        // wait a bit over 50 ms between every request.
+        await sleep(60); // 60 ms
+      }
+    })().catch(error => {
+      console.error(error);
+      process.exit(1);
+    });
     break;
   }
   default: {
     const server = http.createServer((req, res) => {
       getSegmentedUsers()
-        .then(users => users.map(createBatchOperationFromUser))
+        .then(users => users.map(createUserPostData))
         .then(batchOperations => {
           res.write(JSON.stringify(batchOperations, null, 2));
           res.end();
