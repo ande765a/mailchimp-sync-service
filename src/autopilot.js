@@ -6,7 +6,7 @@ class Autopilot {
     this.apiBase = apiBase;
   }
 
-  async fetch(url, { headers = {}, ...opts } = {}) {
+  async fetch(url, { headers = {}, ...opts }) {
     // @ts-ignore
     const res = await fetch(`${this.apiBase}/${url}`, {
       ...opts,

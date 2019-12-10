@@ -10,26 +10,40 @@ function sleep(ms) {
 }
 
 const autopilot = new Autopilot({
-  apiKey: "API_KEY"
+  apiKey: process.env.AUTOPILOT_API_KEY
 });
 
 function createUserPostData(user) {
   const { email } = user.logins.find(login => login.type == "email");
 
-  const [firstname, ...lastnames] = user.name.split(" ");
+  const subscriptions = user.subscriptions.filter(sub => !sub.trial);
+
+  const trial = user.subscriptions.find(sub => {
+    return sub.trial;
+  });
+
+  const subscription = subscriptions.slice(-1)[0]; // Latest subscription
+
+  const [firstname, ...lastnames] = user.name ? user.name.split(" ") : [];
 
   return {
     FirstName: firstname,
     LastName: lastnames.join(" "),
     Email: email,
     custom: {
-      // We default to DA-dk as that is what api-service does
-      "string--Country--code": user.country || "DA",
-      "string--Language--code": user.language || "dk",
-      "boolean--Ever--subscribed": user.subscribed,
-      "boolean--Active--subscribtion": user.active
-      // "boolean--Ever--used--trial": false,
-      // "boolean--Using--trial": false
+      "string--Language--code": user.language || "da",
+      "string--Country--code": user.country || "DK",
+      "date--User--created": user.createdAt,
+      "date--Trial--started": trial && trial.startDate,
+      "boolean--Has--chosen":
+        user.settings && user.settings.hasSeenTrialExpirationPrompt,
+      "date--Subscription--started": subscription && subscription.startDate,
+      "boolean--Subscription--cancelled":
+        subscription && subscription.cancelled,
+      "date--Subscription--expired":
+        subscription && subscription.expirationDate,
+      "integer--Subscription--period": subscription && subscription.period,
+      "integer--Subscriptions": subscriptions.length
     }
   };
 }
@@ -47,13 +61,6 @@ switch (process.env.RUN_MODE) {
         const batch = users.slice(i, i + batchSize);
 
         const userPostData = batch.map(createUserPostData);
-        console.log(userPostData);
-
-        console.log(
-          JSON.stringify({
-            contacts: userPostData
-          })
-        );
 
         const res = await autopilot.fetch("contacts", {
           method: "POST",
@@ -78,7 +85,7 @@ switch (process.env.RUN_MODE) {
   default: {
     const server = http.createServer((req, res) => {
       getSegmentedUsers()
-        .then(users => users.map(createBatchOperationFromUser))
+        .then(users => users.map(createUserPostData))
         .then(batchOperations => {
           res.write(JSON.stringify(batchOperations, null, 2));
           res.end();
